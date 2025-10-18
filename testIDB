@@ -1,0 +1,303 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Examen en Línea</title>
+    <style>
+        body {
+    font-family: Arial, sans-serif;
+    background-color: #f0f0f0;
+    display: flex;
+    justify-content: center;
+    align-items: center;
+    height: 100vh;
+    margin: 0;
+}
+
+.quiz-container {
+    background-color: #fff;
+    padding: 20px;
+    border-radius: 8px;
+    box-shadow: 0 0 10px rgba(0, 0, 0, 0.1);
+    width: 80%;
+    max-width: 600px;
+    text-align: center;
+}
+
+#timer-container {
+    font-size: 1.2em;
+    margin-bottom: 20px;
+}
+
+#quiz-content {
+    text-align: left;
+}
+
+.question {
+    margin-bottom: 20px;
+}
+
+.options div {
+    margin-bottom: 10px;
+}
+
+button {
+    background-color: #007bff;
+    color: white;
+    border: none;
+    padding: 10px 20px;
+    border-radius: 5px;
+    cursor: pointer;
+    font-size: 1em;
+}
+
+button:hover {
+    background-color: #0056b3;
+}
+
+.hide {
+    display: none;
+}
+
+#results-container {
+    margin-top: 20px;
+    font-size: 1.2em;
+}
+
+/* --- Estilos del Modal --- */
+.modal-backdrop {
+    position: fixed;
+    top: 0;
+    left: 0;
+    width: 100%;
+    height: 100%;
+    background-color: rgba(0, 0, 0, 0.6);
+    display: flex;
+    justify-content: center;
+    align-items: center;
+    z-index: 1000;
+}
+
+.modal-content {
+    background-color: #fff;
+    padding: 20px;
+    border-radius: 8px;
+    width: 90%;
+    max-width: 700px;
+    max-height: 80vh;
+    overflow-y: auto;
+}
+
+.modal-header h2 {
+    margin-top: 0;
+}
+
+.modal-footer {
+    text-align: right;
+    margin-top: 20px;
+}
+
+#close-modal-btn {
+    background-color: #6c757d; /* Color gris */
+}
+
+.result-item {
+    padding: 10px;
+    margin-bottom: 10px;
+    border-radius: 5px;
+    border-left: 5px solid;
+}
+
+.result-item.correct {
+    background-color: #d4edda;
+    border-color: #28a745;
+}
+
+.result-item.incorrect {
+    background-color: #f8d7da;
+    border-color: #dc3545;
+}
+.hide {
+    display: none;
+}
+    </style>
+</head>
+<body>
+    <div class="quiz-container">
+        <h1>Examen en Línea</h1>
+        <div id="timer-container">
+            Tiempo restante: <span id="timer">05:00</span>
+        </div>
+        <div id="quiz-content">
+            <button id="start-btn">Comenzar Examen</button>
+        </div>
+        <div id="results-container" class="hide"></div>
+    </div>
+
+    <!-- Modal para los resultados detallados -->
+    <div id="results-modal" class="modal-backdrop hide">
+        <div class="modal-content">
+            <div class="modal-header">
+                <h2>Resultados Detallados</h2>
+            </div>
+            <div id="modal-body" class="modal-body">
+                <!-- El contenido de los resultados se insertará aquí -->
+            </div>
+            <div class="modal-footer">
+                <button id="close-modal-btn">Cerrar</button>
+            </div>
+        </div>
+    </div>
+
+    <script src="https://code.jquery.com/jquery-3.6.0.min.js"></script>
+    <script>
+        $(document).ready(function() {
+    const dbName = "QuizDB_SingleQuestion";
+    let db;
+
+    const questionsData = [
+        { id: 1, question: "¿Cuál es la capital de Francia?", options: ["Berlín", "Madrid", "París", "Roma"], answer: "París" },
+        { id: 2, question: "¿Cuál es el resultado de 2 + 2?", options: ["3", "4", "5"], answer: "4" },
+        { id: 3, question: "¿Qué planeta es conocido como el Planeta Rojo?", options: ["Tierra", "Marte", "Júpiter", "Venus"], answer: "Marte" },
+        { id: 4, question: "¿Quién escribió 'Don Quijote de la Mancha'?", options: ["Miguel de Cervantes", "Gabriel García Márquez", "Pablo Neruda"], answer: "Miguel de Cervantes" },
+        { id: 5, question: "¿Cuál es el río más largo del mundo?", options: ["Nilo", "Amazonas", "Yangtsé"], answer: "Amazonas" },
+        { id: 6, question: "¿En qué año llegó el hombre a la luna?", options: ["1965", "1969", "1972", "1980"], answer: "1969" },
+        { id: 7, question: "¿Cuál es el océano más grande del mundo?", options: ["Atlántico", "Índico", "Pacífico", "Ártico"], answer: "Pacífico" },
+        { id: 8, question: "¿Qué elemento tiene el símbolo químico 'O'?", options: ["Oro", "Oxígeno", "Osmio"], answer: "Oxígeno" },
+        { id: 9, question: "¿Cuál es el país más poblado del mundo?", options: ["China", "India", "Estados Unidos", "Indonesia"], answer: "India" },
+        { id: 10, question: "¿Quién pintó la Mona Lisa?", options: ["Vincent van Gogh", "Pablo Picasso", "Leonardo da Vinci"], answer: "Leonardo da Vinci" }
+    ];
+
+    let allQuestions = [];
+    let currentQuestionIndex = 0;
+    let userAnswers = [];
+    let timer;
+    let timeLeft = 300;
+
+    const request = indexedDB.open(dbName, 1);
+    request.onerror = event => console.error("Error con IndexedDB:", event.target.errorCode);
+    request.onupgradeneeded = event => {
+        db = event.target.result;
+        const objectStore = db.createObjectStore("questions", { keyPath: "id" });
+        objectStore.transaction.oncomplete = () => {
+            const questionObjectStore = db.transaction("questions", "readwrite").objectStore("questions");
+            questionsData.forEach(q => questionObjectStore.add(q));
+        };
+    };
+    request.onsuccess = event => db = event.target.result;
+
+    function startTimer() {
+        timer = setInterval(() => {
+            timeLeft--;
+            const minutes = Math.floor(timeLeft / 60);
+            let seconds = timeLeft % 60;
+            seconds = seconds < 10 ? '0' + seconds : seconds;
+            $('#timer').text(`${minutes}:${seconds}`);
+            if (timeLeft <= 0) {
+                clearInterval(timer);
+                finishQuiz();
+            }
+        }, 1000);
+    }
+
+    function startQuiz() {
+        const transaction = db.transaction(["questions"], "readonly");
+        const objectStore = transaction.objectStore("questions");
+        const request = objectStore.getAll();
+        request.onsuccess = () => {
+            allQuestions = request.result;
+            userAnswers = new Array(allQuestions.length).fill(null);
+            currentQuestionIndex = 0;
+            displayCurrentQuestion();
+            startTimer();
+        };
+    }
+
+    function displayCurrentQuestion() {
+        if (currentQuestionIndex < allQuestions.length) {
+            const q = allQuestions[currentQuestionIndex];
+            let quizHtml = `<div class="question">
+                                <h3>Pregunta ${currentQuestionIndex + 1} de ${allQuestions.length}</h3>
+                                <p>${q.question}</p>
+                                <div class="options">`;
+            q.options.forEach(option => {
+                quizHtml += `<div>
+                                <input type="radio" name="question${q.id}" value="${option}">
+                                <label>${option}</label>
+                             </div>`;
+            });
+            const buttonText = (currentQuestionIndex === allQuestions.length - 1) ? "Finalizar Examen" : "Siguiente Pregunta";
+            quizHtml += `</div>
+                         </div>
+                         <button id="next-btn">${buttonText}</button>`;
+            $('#quiz-content').html(quizHtml);
+        } else {
+            finishQuiz();
+        }
+    }
+
+    function finishQuiz() {
+        clearInterval(timer);
+        let score = 0;
+        let modalResultsHtml = '';
+
+        allQuestions.forEach((q, index) => {
+            const userAnswer = userAnswers[index];
+            const correctAnswer = q.answer;
+
+            if (userAnswer === correctAnswer) {
+                score++;
+                modalResultsHtml += `<div class="result-item correct">
+                                        <p><b>Pregunta ${index + 1}:</b> ${q.question}</p>
+                                        <p>Tu respuesta: ${userAnswer} (Correcta)</p>
+                                     </div>`;
+            } else {
+                modalResultsHtml += `<div class="result-item incorrect">
+                                        <p><b>Pregunta ${index + 1}:</b> ${q.question}</p>
+                                        <p>Tu respuesta: ${userAnswer || "No respondido"} (Incorrecta)</p>
+                                        <p><b>Respuesta correcta: ${correctAnswer}</b></p>
+                                     </div>`;
+            }
+        });
+
+        // Ocultar el examen y el temporizador
+        $('#quiz-content').addClass('hide');
+        $('#timer-container').addClass('hide');
+
+        // Mostrar el resumen del puntaje y el botón para ver detalles
+        $('#results-container').removeClass('hide').html(`<h2>Examen Terminado</h2>
+                                                          <p>Has respondido correctamente ${score} de ${allQuestions.length} preguntas.</p>
+                                                          <button id="show-details-btn">Ver Detalles</button>`);
+        
+        // Cargar los resultados en el cuerpo del modal
+        $('#modal-body').html(modalResultsHtml);
+    }
+    
+    // --- Manejadores de Eventos ---
+    $('#start-btn').on('click', function() {
+        $(this).parent().html('');
+        startQuiz();
+    });
+
+    $(document).on('click', '#next-btn', function() {
+        const q = allQuestions[currentQuestionIndex];
+        const selectedAnswer = $(`input[name="question${q.id}"]:checked`).val();
+        userAnswers[currentQuestionIndex] = selectedAnswer || null;
+        currentQuestionIndex++;
+        displayCurrentQuestion();
+    });
+
+    // Nuevo: Abrir el modal de resultados
+    $(document).on('click', '#show-details-btn', function() {
+        $('#results-modal').removeClass('hide');
+    });
+
+    // Nuevo: Cerrar el modal de resultados
+    $('#close-modal-btn').on('click', function() {
+        $('#results-modal').addClass('hide');
+    });
+});
+    </script>
+</body>
+</html>
